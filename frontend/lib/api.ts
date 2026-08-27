@@ -59,5 +59,8 @@ export function subscribeEvents(
     try { onEvent(JSON.parse(e.data)); } catch { /* keepalive */ }
   };
   es.addEventListener("reset", onResync);
+  // Resync whenever the stream (re)connects: anything a broken proxy or a
+  // dropped connection swallowed is picked up from the REST API.
+  es.onopen = onResync;
   return () => es.close();
 }
