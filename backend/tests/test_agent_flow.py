@@ -110,19 +110,37 @@ def test_interrupt_while_analyzing_combines_comments():
         await stack.queue.stop()
     run(main())
 
-def test_comment_past_cutoff_queues_next_iteration():
+def test_comments_locked_past_the_cutoff():
+    """Once the code phase starts, the thread is locked (product flow: wait
+    for the preview or start a NEW thread) — nothing enters the append-only
+    log, and the 409 message is the reminder."""
+    import pytest
+    from backend.comments.utils import CommentError
+
     async def main():
         stack = make_stack()
         await stack.queue.start()
         thread, _ = post(stack, "style is off", selector="#a")
         await until_status(stack, thread.id, ThreadStatus.CODING, timeout=2)
-        post(stack, "and font size 18", thread_id=thread.id)
-        t = stack.threads.get(thread.id)
-        assert any("not interrupting" in c.text.lower() for c in t.comments if c.system)
-        # first preview lands, then the queued follow-up runs off it
+
+        n_comments = len(stack.threads.get(thread.id).comments)
+        for text, agent in (("and font size 18", True), ("just chatting", False)):
+            with pytest.raises(CommentError) as e:
+                post(stack, text, thread_id=thread.id, agent=agent)
+            assert e.value.status_code == 409
+            assert "Start a new comment thread" in e.value.message
+        assert len(stack.threads.get(thread.id).comments) == n_comments  # nothing stored
+
+        # a NEW thread during another thread's code phase is fine
+        other, _ = post(stack, "hide this", selector="#b")
+        assert other.id != thread.id
+
+        # and the locked thread reopens once its preview lands
+        await until_status(stack, thread.id, ThreadStatus.PREVIEW_READY)
+        post(stack, "font size 18", thread_id=thread.id)
         await wait_for(lambda: len(stack.threads.get(thread.id).iterations) == 2)
-        t = stack.threads.get(thread.id)
-        assert t.iterations[1].parent_sha == t.iterations[0].sha
+        assert (stack.threads.get(thread.id).iterations[1].parent_sha
+                == stack.threads.get(thread.id).iterations[0].sha)
         await stack.queue.stop()
     run(main())
 

@@ -109,6 +109,9 @@ body.ctf-commenting, body.ctf-commenting * { cursor: crosshair !important; }
 .ctf-actions { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #f0f0f0; flex-wrap: wrap; }
 .ctf-approve { background: #30a46c; }
 .ctf-pr-sim { background: #868e96; cursor: help; }
+.ctf-sha-link { text-decoration: none; color: #6e56cf; font-weight: 600; }
+.ctf-sha-link code { background: #e6e2f5; padding: 1px 5px; border-radius: 4px; font-size: 11.5px; }
+.ctf-sha-link:hover code { background: #d3cbf0; }
 .ctf-composer { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid #eee; align-items: flex-start; }
 .ctf-input { width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 8px; font-size: 13px; font-family: inherit; resize: vertical; }
 .ctf-error { color: #b91c1c; font-size: 11.5px; margin-top: 4px; }

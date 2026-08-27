@@ -65,10 +65,24 @@ function CaptureChip({ comment, userId }: { comment: ThreadComment; userId: stri
   );
 }
 
-function renderText(text: string) {
+function renderText(text: string, previewShas?: Set<string>) {
   const parts = text.split(/(`[^`]+`|@[a-zA-Z_][\w-]*)/g);
   return parts.map((p, i) => {
-    if (p.startsWith("`") && p.endsWith("`")) return <code key={i}>{p.slice(1, -1)}</code>;
+    if (p.startsWith("`") && p.endsWith("`")) {
+      const token = p.slice(1, -1);
+      // A sha that has a preview deployment links straight to it — so each
+      // "Fix deployed to preview `xyz`" comment opens ITS OWN preview, not
+      // just the latest one from the bottom button.
+      if (previewShas?.has(token)) {
+        return (
+          <a key={i} className="ctf-sha-link" href={`/preview/${token}`}
+             target="_blank" rel="noreferrer" title="open this preview">
+            <code>{token}</code>↗
+          </a>
+        );
+      }
+      return <code key={i}>{token}</code>;
+    }
     if (p.startsWith("@")) return <span key={i} className="ctf-mention">{p}</span>;
     return p;
   });
@@ -92,6 +106,7 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
   }, [thread.comments.length]);
 
   const canAct = user.permission !== "view";
+  const previewShas = new Set(thread.iterations.map((it) => it.sha));
   const closed = CLOSED_STATUSES.includes(thread.status);
   const [icon, label] = STATUS_META[thread.status] ?? ["", thread.status];
   const validation = validateComment(text);
@@ -145,14 +160,16 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
               {c.system ? "🤖 agent" : users.find((u) => u.id === c.userId)?.name ?? c.userId}
               <small>{new Date(c.createdAt).toLocaleTimeString()}</small>
             </div>
-            <div style={{ whiteSpace: "pre-wrap" }}>{renderText(c.text)}</div>
+            <div style={{ whiteSpace: "pre-wrap" }}>{renderText(c.text, previewShas)}</div>
             <CaptureChip comment={c} userId={user.id} />
           </div>
         ))}
       </div>
       <div className="ctf-actions">
         {thread.previewUrl && !["merged", "done"].includes(thread.status) && (
-          <a className="ctf-btn" href={thread.previewUrl} target="_blank">🌐 Open preview</a>
+          <a className="ctf-btn" href={thread.previewUrl} target="_blank"
+             title="the newest preview — older ones are linked from their own comments">
+            🌐 Open latest preview ({thread.previewSha})</a>
         )}
         {thread.status === "preview_ready" && (
           user.permission === "approve" ? (

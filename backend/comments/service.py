@@ -6,10 +6,10 @@ import time
 from collections import defaultdict, deque
 
 from backend.comments.utils import (
-    CommentError, validate_capture, validate_target, validate_text,
+    CommentError, mentions_agent, validate_capture, validate_target, validate_text,
 )
 from backend.db.repos import CommentRepo, MetaRepo, ThreadRepo
-from backend.domain.models import CLOSED_STATUSES, Comment, Thread, User
+from backend.domain.models import CLOSED_STATUSES, Comment, Thread, ThreadStatus, User
 
 class SlidingWindowRateLimiter:
     """Per-user flood protection at the edge (the queue's max_inflight protects
@@ -61,6 +61,14 @@ class CommentService:
                 f"This thread is closed ({thread.status.value}) — the preview you're "
                 "looking at is stale. Refresh the live site and start a new comment "
                 "thread for further changes."))
+        if thread and thread.status in (ThreadStatus.CODING, ThreadStatus.DEPLOYING):
+            # Past the cutoff the thread is locked — one simple rule instead of
+            # queue-for-later semantics nobody can predict: wait for the
+            # preview, or open a NEW thread for anything you need right now.
+            raise CommentError(409, (
+                "Code change in flight — this thread reopens when the preview "
+                "lands. Want something else changed right now? Start a new "
+                "comment thread on the element."))
 
         if not thread:
             target = validate_target(body.get("target"))

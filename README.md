@@ -14,8 +14,9 @@ shared demo instance, so you may see threads left by other visitors.
    `triggered → analyzing → putting up code change → deploying → preview ready`.
 2. Open the preview (new sha, patched page) and follow up: *"@agent make it
    green and font size 16"* → the next iteration branches off the preview sha.
-3. Comment again **while it's analyzing** → it interrupts and combines; comment
-   while it's coding/deploying → it queues for the next iteration.
+3. Comment again **while it's analyzing** → it interrupts and combines. Once
+   it's coding/deploying the thread is locked — wait for the preview, or start
+   a new thread for anything else.
 4. Switch to **Evan (Engineer)** — only approvers see **Approve → open PR**
    (designers see "waiting for @evan"); then `pr_open → merged → done`.
 5. Break it on purpose: put `flaky` (worker crashes once, retry succeeds),
@@ -34,7 +35,7 @@ history. Closed threads reject follow-ups and their previews go read-only.
 
 ## Architecture
 
-![Architecture](docs/architecture-preview.svg)
+![Architecture](docs/architecture.png)
 
 ```
 backend/                  pure API server (FastAPI)
