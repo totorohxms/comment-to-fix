@@ -172,8 +172,8 @@ export function ThreadPanel({ thread, users, user, pageSha, onClose, onFollowUp,
         <div className="ctf-old-banner">
           🕰 You're viewing iteration {pageIterIdx + 1} of {thread.iterations.length} — an
           older preview. Thread now: {STATUS_META[thread.status]?.[1] ?? thread.status}.{" "}
-          <a href={`/preview/${thread.previewSha}`} target="_blank" rel="noreferrer">
-            open latest preview ↗</a>
+          <a href={`/preview/live/${thread.id}`} target="_blank" rel="noreferrer">
+            open live preview ↗</a>
         </div>
       )}
       <div className="ctf-comments" ref={listRef}>
@@ -190,9 +190,9 @@ export function ThreadPanel({ thread, users, user, pageSha, onClose, onFollowUp,
       </div>
       <div className="ctf-actions">
         {thread.previewUrl && !["merged", "done"].includes(thread.status) && (
-          <a className="ctf-btn" href={thread.previewUrl} target="_blank"
-             title="the newest preview — older ones are linked from their own comments">
-            🌐 Open latest preview ({thread.previewSha})</a>
+          <a className="ctf-btn" href={`/preview/live/${thread.id}`} target="_blank"
+             title="this thread's living preview link — it always shows the newest iteration; sha-pinned links in the comments stay frozen as history">
+            🌐 Open live preview (now {thread.previewSha})</a>
         )}
         {["triggered", "analyzing", "coding", "deploying"].includes(thread.status) && canAct && (
           <button className="ctf-btn ctf-cancel"

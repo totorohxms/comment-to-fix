@@ -73,3 +73,30 @@ def test_unknown_preview_404(client):
 
 def test_unknown_thread_404(client):
     assert client.get("/api/threads/thr_nope", headers=hdr("dana")).status_code == 404
+
+def test_live_preview_resolves_thread_tip(client):
+    import time
+
+    # no thread / no preview yet -> 404
+    assert client.get("/api/previews/live/thr_nope").status_code == 404
+
+    r = client.post("/api/comments", headers=hdr("dana"), json={
+        "text": "@agent this button style is not right",
+        "target": {"selector": "#btn-live-test", "label": "Btn"},
+        "capture": {"sha": "abc1234", "url": "/demo/profile", "network": [], "console": []},
+    })
+    thread_id = r.json()["thread"]["id"]
+
+    for _ in range(300):
+        t = client.get(f"/api/threads/{thread_id}", headers=hdr("vic")).json()
+        if t["previewSha"]:
+            break
+        time.sleep(0.02)
+    assert t["previewSha"], f"never reached a preview: {t['status']}"
+
+    # the living link serves the tip, and the sha permalink serves the same patches
+    live = client.get(f"/api/previews/live/{thread_id}")
+    assert live.status_code == 200
+    assert live.json()["sha"] == t["previewSha"]
+    pinned = client.get(f"/api/previews/{t['previewSha']}")
+    assert pinned.json()["css"] == live.json()["css"]

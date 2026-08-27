@@ -57,6 +57,11 @@ class AgentTaskQueue:
 
     async def start(self) -> None:
         self._stopping = False
+        # Recreate the wake event so it binds to the *current* event loop: a
+        # process that stops and restarts the queue on a new loop (tests, and
+        # any embedder that recycles lifespans) would otherwise crash workers
+        # awaiting an event bound to the previous loop.
+        self._wake = asyncio.Event()
         self._loops = [asyncio.create_task(self._worker(i)) for i in range(self.max_inflight)]
         self._loops.append(asyncio.create_task(self._janitor()))
         log.info("queue: %d workers, lease %.0fs, janitor every %.0fs",
