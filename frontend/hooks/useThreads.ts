@@ -30,8 +30,17 @@ export function useThreads(userId: string | null, pageUrl: string) {
         }
         return [...prev, ev.thread];  // server already scoped events to this page
       });
-    }, () => { refresh().catch(() => {}); });  // reset: replay gap unverifiable
+    }, () => { refresh().catch(() => {}); });  // reset / reconnect: resync via REST
   }, [userId, pageUrl, refresh]);
+
+  // Slow-poll safety net: even if SSE is silently broken (buffering proxy,
+  // corporate middlebox), the UI can lag by at most one poll interval —
+  // never wedge stale with a live-looking Approve button.
+  useEffect(() => {
+    if (!userId) return;
+    const t = setInterval(() => { refresh().catch(() => {}); }, 15_000);
+    return () => clearInterval(t);
+  }, [userId, refresh]);
 
   return { threads, refresh };
 }

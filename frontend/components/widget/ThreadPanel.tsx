@@ -74,12 +74,13 @@ function renderText(text: string) {
   });
 }
 
-export function ThreadPanel({ thread, users, user, onClose, onFollowUp }: {
+export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefresh }: {
   thread: Thread;
   users: User[];
   user: User;
   onClose: () => void;
   onFollowUp: (text: string) => Promise<void>;
+  onRefresh: () => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
@@ -111,8 +112,15 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp }: {
   const approve = async () => {
     // Approve names the sha this panel is showing — if a newer preview landed
     // meanwhile, the backend rejects and the approver reviews the latest.
-    try { await approveThread(user.id, thread.id, thread.previewSha); }
-    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+    try {
+      await approveThread(user.id, thread.id, thread.previewSha);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : String(e));
+    } finally {
+      // Self-heal: a rejection usually means this panel was stale (the thread
+      // moved on without an SSE update reaching us) — refetch the truth.
+      onRefresh();
+    }
   };
 
   return (
