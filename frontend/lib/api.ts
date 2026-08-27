@@ -41,6 +41,9 @@ export const approveThread = (user: string, threadId: string, previewSha: string
     body: JSON.stringify({ previewSha }),  // the sha the approver reviewed
   });
 
+export const cancelRun = (user: string, threadId: string) =>
+  api<Thread>(`/api/threads/${threadId}/cancel`, user, { method: "POST" });
+
 export const getCapture = (user: string, commentId: string) =>
   api<Record<string, unknown>>(`/api/comments/${commentId}/capture`, user);
 

@@ -106,41 +106,82 @@ def test_interrupt_while_analyzing_combines_comments():
         t = stack.threads.get(thread.id)
         assert len(t.iterations) == 1
         assert len(t.iterations[0].comment_ids) == 2          # combined into one task
-        assert any("interrupted" in c.text for c in t.comments if c.system)
+        assert any("combined your asks" in c.text for c in t.comments if c.system)
         await stack.queue.stop()
     run(main())
 
-def test_comments_locked_past_the_cutoff():
-    """Once the code phase starts, the thread is locked (product flow: wait
-    for the preview or start a NEW thread) — nothing enters the append-only
-    log, and the 409 message is the reminder."""
-    import pytest
-    from backend.comments.utils import CommentError
-
+def test_comment_past_cutoff_queues_with_narration():
+    """The queue is back, but every step narrates itself: queued ask names
+    itself, the drain says what it coalesces, the deploy says what it fixes."""
     async def main():
         stack = make_stack()
         await stack.queue.start()
         thread, _ = post(stack, "style is off", selector="#a")
         await until_status(stack, thread.id, ThreadStatus.CODING, timeout=2)
+        post(stack, "and font size 18", thread_id=thread.id)
 
-        n_comments = len(stack.threads.get(thread.id).comments)
-        for text, agent in (("and font size 18", True), ("just chatting", False)):
-            with pytest.raises(CommentError) as e:
-                post(stack, text, thread_id=thread.id, agent=agent)
-            assert e.value.status_code == 409
-            assert "Start a new comment thread" in e.value.message
-        assert len(stack.threads.get(thread.id).comments) == n_comments  # nothing stored
+        t = stack.threads.get(thread.id)
+        queued = next(c.text for c in t.comments if c.system and "Queued your ask" in c.text)
+        assert "font size 18" in queued                    # names the ask
 
-        # a NEW thread during another thread's code phase is fine
-        other, _ = post(stack, "hide this", selector="#b")
-        assert other.id != thread.id
-
-        # and the locked thread reopens once its preview lands
-        await until_status(stack, thread.id, ThreadStatus.PREVIEW_READY)
-        post(stack, "font size 18", thread_id=thread.id)
         await wait_for(lambda: len(stack.threads.get(thread.id).iterations) == 2)
-        assert (stack.threads.get(thread.id).iterations[1].parent_sha
-                == stack.threads.get(thread.id).iterations[0].sha)
+        t = stack.threads.get(thread.id)
+        assert t.iterations[1].parent_sha == t.iterations[0].sha
+        drain = next(c.text for c in t.comments if c.system and "queued ask" in c.text)
+        assert "font size 18" in drain                     # says what it coalesces
+        deployed = [c.text for c in t.comments if c.system and "Addresses" in c.text]
+        assert any("font size 18" in d for d in deployed)  # says what it fixed
+        await stack.queue.stop()
+    run(main())
+
+def test_cancel_run_discards_in_flight_work_and_never_resurrects():
+    async def main():
+        stack = make_stack()
+        await stack.queue.start()
+        thread, first = post(stack, "make it blue", selector="#a")
+        await until_status(stack, thread.id, ThreadStatus.ANALYZING, timeout=2)
+
+        r = stack.runner.cancel_run(stack.threads.get(thread.id), dana())
+        assert r == {"ok": True}
+        t = stack.threads.get(thread.id)
+        assert t.status == ThreadStatus.OPEN               # no iterations yet -> discussion
+        assert any("cancelled the in-flight run" in c.text for c in t.comments if c.system)
+        assert t.iterations == []
+
+        # the cancelled ask is covered — a later run must NOT resurrect it
+        await asyncio.sleep(0.1)
+        thread2, second = post(stack, "make it rounded", thread_id=thread.id)
+        await until_status(stack, thread.id, ThreadStatus.PREVIEW_READY)
+        t = stack.threads.get(thread.id)
+        assert len(t.iterations) == 1
+        assert t.iterations[0].comment_ids == [second.id]  # only the new ask
+        await stack.queue.stop()
+    run(main())
+
+def test_cancel_after_a_preview_returns_to_preview_ready():
+    async def main():
+        stack = make_stack()
+        await stack.queue.start()
+        thread, _ = post(stack, "make it blue", selector="#a")
+        await until_status(stack, thread.id, ThreadStatus.PREVIEW_READY)
+        post(stack, "make it rounded", thread_id=thread.id)
+        await until_status(stack, thread.id, ThreadStatus.ANALYZING, timeout=2)
+
+        assert stack.runner.cancel_run(stack.threads.get(thread.id), dana()) == {"ok": True}
+        t = stack.threads.get(thread.id)
+        assert t.status == ThreadStatus.PREVIEW_READY      # last good preview stands
+        assert len(t.iterations) == 1
+        await stack.queue.stop()
+    run(main())
+
+def test_cancel_requires_something_in_flight():
+    async def main():
+        stack = make_stack()
+        await stack.queue.start()
+        thread, _ = post(stack, "make it blue", selector="#a")
+        await until_status(stack, thread.id, ThreadStatus.PREVIEW_READY)
+        r = stack.runner.cancel_run(stack.threads.get(thread.id), dana())
+        assert "error" in r and "Nothing to cancel" in r["error"]
         await stack.queue.stop()
     run(main())
 

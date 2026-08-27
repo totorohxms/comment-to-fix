@@ -108,17 +108,19 @@ class AgentRunner:
             if thread.status in INTERRUPTIBLE_STATUSES:
                 self.queue.cancel(task)
                 combined = list(dict.fromkeys([*task.comment_ids, comment.id]))
-                self._system(thread.id, "🤖 Task was still analyzing — interrupted it "
-                                        "and combined your new comment into one task.")
+                self._system(thread.id, (
+                    "🤖 Still analyzing, so I combined your asks into one fix: "
+                    f"{self._quote_asks(thread, combined)}. One preview will address "
+                    f"all {len(combined)}."))
                 self._submit(thread.id, combined)
             else:
                 # Past the cutoff (code change in flight): never interrupt.
-                # The comment is already stored; the post-iteration drain picks
-                # up every comment no iteration has addressed (db-derived, so
-                # the intent survives a process restart).
-                self._system(thread.id, "🤖 Code change already in flight — not "
-                                        "interrupting. Your comment is queued for the next "
-                                        "iteration (it will branch off the upcoming preview).")
+                # The comment is stored and the post-iteration drain picks up
+                # every ask no task has covered (db-derived, restart-safe).
+                self._system(thread.id, (
+                    "🤖 The current fix is already being coded — it won't change. "
+                    f"Queued your ask ({self._quote_asks(thread, [comment.id])}) to start "
+                    "the next iteration automatically when this preview lands."))
                 self.publish_state(thread.id)
             return
 
@@ -229,6 +231,33 @@ class AgentRunner:
             self._system(thread_id, "🤖 Fix rolled out to production. Thread resolved. 🎉")
             self.publish_state(thread_id, ThreadStatus.DONE)
 
+    # ---- explicit cancel -----------------------------------------------------
+
+    def cancel_run(self, thread: Thread, user: User) -> dict:
+        """The escape hatch that completes the commitment model: intent is
+        mutable while analyzing, committed once coding — and commitment can be
+        renounced explicitly, never mutated silently. The cancelled task's
+        comment ids stay covered (see covered_comment_ids), so a cancelled ask
+        is never resurrected by a later drain — re-asking is a new comment."""
+        if not user.can_comment:
+            return {"error": f"{user.name} has view-only permission"}
+        task = self.queue.active_task(thread.id)
+        if not task or thread.status not in IN_FLIGHT_STATUSES:
+            return {"error": f"Nothing to cancel — status is "
+                             f"{self.threads.status(thread.id).value}"}
+        self.queue.cancel(task)
+        current = self.threads.get(thread.id)
+        back_to = (ThreadStatus.PREVIEW_READY if current.iterations
+                   else ThreadStatus.OPEN)
+        self._system(thread.id, (
+            f"🤖 {user.name} cancelled the in-flight run "
+            f"({self._quote_asks(current, task.comment_ids)}) — the pending change "
+            "was discarded. "
+            + ("The last preview is still current."
+               if current.iterations else "Thread is back to open discussion.")))
+        self.publish_state(thread.id, back_to)
+        return {"ok": True}
+
     # ---- DLQ replay ----------------------------------------------------------
 
     def requeue_from_dlq(self, task_id: str) -> bool:
@@ -310,9 +339,12 @@ class AgentRunner:
             summary=outcome.patch.summary, comment_ids=task.comment_ids))
         # Auto-tag the approver group — only they can turn this into a PR.
         approvers = " ".join(f"@{u.id}" for u in self.users.list() if u.can_approve)
+        asks = self._quote_asks(thread, task.comment_ids)
+        n = len([c for c in thread.comments if c.id in task.comment_ids and not c.system])
         self._system(thread.id, (
             f"🤖 Fix deployed to preview `{outcome.preview_sha}` "
             f"(branch off `{outcome.parent_sha}`).\n"
+            f"Addresses {n} ask{'s' if n > 1 else ''}: {asks}.\n"
             f"{outcome.patch.summary}\n"
             f"Analysis: {outcome.analysis}\n"
             f"Check it and keep commenting with @agent to iterate. "
@@ -327,8 +359,7 @@ class AgentRunner:
         derived from the db, so it survives restarts and lost tracking. Plain
         (collaboration) comments never enter agent bookkeeping."""
         addressed = {cid for it in thread.iterations for cid in it.comment_ids}
-        active = self.queue.active_task(thread.id)
-        covered = set(active.comment_ids) if active else set()
+        covered = self.queue.covered_comment_ids(thread.id)  # incl. cancelled tasks
         return [c.id for c in thread.comments
                 if not c.system and mentions_agent(c.text)
                 and c.id not in addressed and c.id not in covered]
@@ -339,8 +370,10 @@ class AgentRunner:
             return
         pending = self._pending_comment_ids(thread)
         if pending:
-            self._system(thread_id, "🤖 Starting next iteration for comments "
-                                    "queued during the previous run.")
+            n = len(pending)
+            self._system(thread_id, (
+                f"🤖 Preview is out — starting the next iteration for {n} queued "
+                f"ask{'s' if n > 1 else ''}: {self._quote_asks(thread, pending)}."))
             self._submit(thread_id, pending)
 
     def recover(self) -> int:
@@ -400,6 +433,16 @@ class AgentRunner:
                                          f"{task.attempts} attempts ({why}). "
                                          "A human should take a look; it can be replayed from the DLQ.")
             self.publish_state(task.thread_id, ThreadStatus.FAILED)
+
+    def _quote_asks(self, thread, comment_ids) -> str:
+        """Human-readable list of the asks a task covers, for narration."""
+        import re
+        quotes = []
+        for c in thread.comments:
+            if c.id in comment_ids and not c.system:
+                t = re.sub(r"@agent", "", c.text, flags=re.IGNORECASE).strip()
+                quotes.append('“' + (t[:48] + '…' if len(t) > 48 else t) + '”')
+        return " + ".join(quotes)
 
     def _system(self, thread_id: str, text: str) -> None:
         self.comments.append(thread_id, user_id="agent", text=text, system=True)

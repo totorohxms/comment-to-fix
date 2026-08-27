@@ -43,6 +43,7 @@ class AgentTaskQueue:
         self.task_timeout_s = task_timeout_s
         self._handler = None      # async (AgentTask) -> None
         self._on_outcome = None   # (AgentTask, outcome: str, error: str) -> None
+        self._stopping = False    # disambiguates worker-shutdown from task-cancel
         self._loops: list[asyncio.Task] = []
         self._running: dict[str, asyncio.Task] = {}  # task.id -> asyncio task
         self._wake = asyncio.Event()
@@ -55,14 +56,20 @@ class AgentTaskQueue:
         self._on_outcome = cb
 
     async def start(self) -> None:
+        self._stopping = False
         self._loops = [asyncio.create_task(self._worker(i)) for i in range(self.max_inflight)]
         self._loops.append(asyncio.create_task(self._janitor()))
         log.info("queue: %d workers, lease %.0fs, janitor every %.0fs",
                  self.max_inflight, self.lease_ms / 1000, self.reaper_interval_s)
 
     async def stop(self) -> None:
+        # The flag disambiguates a racing pair of CancelledErrors: a worker
+        # whose current run was cancelled at the same moment as shutdown would
+        # otherwise swallow its own cancellation and loop forever.
+        self._stopping = True
         for t in self._loops:
             t.cancel()
+        await asyncio.gather(*self._loops, return_exceptions=True)
         self._loops = []
 
     def submit(self, task: AgentTask) -> None:
@@ -93,6 +100,10 @@ class AgentTaskQueue:
             return None
         self._wake.set()
         return self.tasks.get(task_id)
+
+    def covered_comment_ids(self, thread_id: str) -> set[str]:
+        """Comment ids ever covered by any task of this thread (see TaskRepo)."""
+        return self.tasks.covered_comment_ids(thread_id)
 
     def counts(self) -> dict:
         return self.tasks.counts()
@@ -163,7 +174,7 @@ class AgentTaskQueue:
                         self._on_outcome(self.tasks.get(task.id), outcome, "task deadline exceeded")
                     if outcome == "retry":
                         self._wake.set()
-                elif run.cancelled():
+                elif run.cancelled() and not self._stopping:
                     self.tasks.cancel(task.id)  # interrupted on purpose; no retry
                     metrics.incr("queue.task.cancelled")
                 else:  # the worker itself was cancelled (shutdown)

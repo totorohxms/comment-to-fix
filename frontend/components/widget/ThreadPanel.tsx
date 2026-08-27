@@ -4,7 +4,7 @@
 // capture inspection, approve action, validated follow-up composer.
 
 import { useEffect, useRef, useState } from "react";
-import { approveThread, getCapture } from "@/lib/api";
+import { approveThread, cancelRun, getCapture } from "@/lib/api";
 import { CLOSED_STATUSES, type Thread, type ThreadComment, type User } from "@/lib/types";
 import { COMMENT_MAX, validateComment } from "@/lib/validation";
 import { STATUS_META, STATUS_ORDER } from "./status";
@@ -88,10 +88,11 @@ function renderText(text: string, previewShas?: Set<string>) {
   });
 }
 
-export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefresh }: {
+export function ThreadPanel({ thread, users, user, pageSha, onClose, onFollowUp, onRefresh }: {
   thread: Thread;
   users: User[];
   user: User;
+  pageSha: string | null;   // the preview sha of the page the panel is on
   onClose: () => void;
   onFollowUp: (text: string) => Promise<void>;
   onRefresh: () => void;
@@ -107,6 +108,20 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
 
   const canAct = user.permission !== "view";
   const previewShas = new Set(thread.iterations.map((it) => it.sha));
+
+  // Version-scoped transcript: on an OLDER preview, show the thread as of
+  // that preview (cut at its "Fix deployed" message) so the narration matches
+  // the pixels. Newer activity is announced by the banner, never mixed in.
+  // Status + composer stay LIVE — "what produced this page" and "what's
+  // happening now" are different questions.
+  const pageIterIdx = pageSha ? thread.iterations.findIndex((it) => it.sha === pageSha) : -1;
+  const isOldPreview = pageIterIdx >= 0 && pageIterIdx < thread.iterations.length - 1;
+  let transcript = thread.comments;
+  if (isOldPreview) {
+    const cut = thread.comments.findIndex(
+      (c) => c.system && c.text.includes("preview \`" + pageSha + "\`"));
+    if (cut >= 0) transcript = thread.comments.slice(0, cut + 1);
+  }
   const closed = CLOSED_STATUSES.includes(thread.status);
   const [icon, label] = STATUS_META[thread.status] ?? ["", thread.status];
   const validation = validateComment(text);
@@ -153,8 +168,16 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
           </a>
         ))}
       </div>
+      {isOldPreview && (
+        <div className="ctf-old-banner">
+          🕰 You're viewing iteration {pageIterIdx + 1} of {thread.iterations.length} — an
+          older preview. Thread now: {STATUS_META[thread.status]?.[1] ?? thread.status}.{" "}
+          <a href={`/preview/${thread.previewSha}`} target="_blank" rel="noreferrer">
+            open latest preview ↗</a>
+        </div>
+      )}
       <div className="ctf-comments" ref={listRef}>
-        {thread.comments.map((c) => (
+        {transcript.map((c) => (
           <div key={c.id} className={`ctf-comment${c.system ? " ctf-sys" : ""}`}>
             <div className="ctf-comment-head">
               {c.system ? "🤖 agent" : users.find((u) => u.id === c.userId)?.name ?? c.userId}
@@ -170,6 +193,17 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
           <a className="ctf-btn" href={thread.previewUrl} target="_blank"
              title="the newest preview — older ones are linked from their own comments">
             🌐 Open latest preview ({thread.previewSha})</a>
+        )}
+        {["triggered", "analyzing", "coding", "deploying"].includes(thread.status) && canAct && (
+          <button className="ctf-btn ctf-cancel"
+                  title="discard the in-flight change; the thread returns to its last good state"
+                  onClick={async () => {
+                    try { await cancelRun(user.id, thread.id); }
+                    catch (e) { alert(e instanceof Error ? e.message : String(e)); }
+                    finally { onRefresh(); }
+                  }}>
+            ✋ Cancel run
+          </button>
         )}
         {thread.status === "preview_ready" && (
           user.permission === "approve" ? (

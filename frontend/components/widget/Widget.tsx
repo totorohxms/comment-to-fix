@@ -185,6 +185,7 @@ export function Widget({ sha, env }: { sha: string; env: "production" | "preview
 
       {openThread && (
         <ThreadPanel thread={openThread} users={users} user={user}
+                     pageSha={env === "preview" ? sha : null}
                      onClose={() => setOpenThreadId(null)}
                      onFollowUp={(text) => submit(text, openThread.id)}
                      onRefresh={() => { refresh().catch(() => {}); }} />

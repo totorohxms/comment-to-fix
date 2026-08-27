@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from backend.container import container
 from backend.domain.models import User
-from backend.routes.deps import auth, require_approver
+from backend.routes.deps import auth, require_approver, require_commenter
 from backend.routes.schemas import ApproveThreadRequest
 
 router = APIRouter()
@@ -30,6 +30,17 @@ def get_thread(thread_id: str, user: User = Depends(auth)):
     if not t:
         raise HTTPException(404, "not found")
     return t.to_api()
+
+@router.post("/api/threads/{thread_id}/cancel")
+async def cancel(thread_id: str, user: User = Depends(auth)):
+    require_commenter(user)
+    t = container.threads.get(thread_id)
+    if not t:
+        raise HTTPException(404, "not found")
+    r = container.runner.cancel_run(t, user)
+    if "error" in r:
+        raise HTTPException(409, r["error"])
+    return container.threads.get(thread_id).to_api()
 
 @router.post("/api/threads/{thread_id}/approve")
 async def approve(thread_id: str, req: ApproveThreadRequest, user: User = Depends(auth)):

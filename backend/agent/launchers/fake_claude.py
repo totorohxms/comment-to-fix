@@ -17,7 +17,9 @@ from backend.agent.queue import WorkerVanished
 from backend.domain.models import Comment, Patch
 from backend.agent.models import FixTaskResult, FixTaskSpec, TaskPhase
 
-ANALYZE_S = 3.5
+# Deliberately long: analyzing is the INTAKE WINDOW where follow-ups still
+# combine into the ask. Long enough for the demo audience to experience it.
+ANALYZE_S = 10.0
 CODE_S = 4.5
 
 COLORS = {

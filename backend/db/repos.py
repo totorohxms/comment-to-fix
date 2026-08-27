@@ -275,6 +275,16 @@ class TaskRepo:
             (now_ms(), task_id))
         return cur.rowcount == 1
 
+    def covered_comment_ids(self, thread_id: str) -> set[str]:
+        """Comment ids any task (in any state, cancelled included) has ever
+        covered. A cancelled ask must not be silently resurrected by a later
+        drain — re-asking is an explicit new comment."""
+        out: set[str] = set()
+        for r in self.db.query(
+                "SELECT comment_ids_json FROM agent_tasks WHERE thread_id = ?", (thread_id,)):
+            out.update(json.loads(r["comment_ids_json"]))
+        return out
+
     def list_by_state(self, state: TaskState) -> list[AgentTask]:
         return [self._row(r) for r in self.db.query(
             "SELECT * FROM agent_tasks WHERE state = ? ORDER BY created_at", (state.value,))]
