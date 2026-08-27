@@ -8,7 +8,11 @@ services:
     ports:
       - "4173:4173"
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+        # build-time too: the /api/* rewrite destination is baked into the build
+        - BACKEND_URL=http://backend:4173
     environment:
       - BACKEND_URL=http://backend:4173
     ports:
