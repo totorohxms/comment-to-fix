@@ -44,6 +44,12 @@ class Settings:
     # logging
     log_level: str
     log_format: str
+    # real PR integration (optional)
+    pr_service: str          # auto | fake | github
+    github_repo: str
+    github_token: str
+    github_auto_merge: bool
+    app_base_url: str
     # metrics
     statsd_host: str
     statsd_port: int
@@ -65,6 +71,11 @@ def _build() -> Settings:
         cors_origins=[o.strip() for o in env("CORS_ORIGINS", "http://localhost:3000").split(",")],
         log_level=env("LOG_LEVEL", "INFO"),
         log_format=env("LOG_FORMAT", "text"),
+        pr_service=env("PR_SERVICE", "auto"),
+        github_repo=env("GITHUB_REPO", ""),
+        github_token=env("GITHUB_TOKEN", ""),
+        github_auto_merge=env("GITHUB_AUTO_MERGE", "1") == "1",
+        app_base_url=env("APP_BASE_URL", ""),
         statsd_host=env("STATSD_HOST", "127.0.0.1"),
         statsd_port=int(env("STATSD_PORT", "8125")),
         statsd_prefix=env("STATSD_PREFIX", "ctf"),

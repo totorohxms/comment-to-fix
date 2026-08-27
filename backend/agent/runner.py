@@ -155,7 +155,18 @@ class AgentRunner:
     async def _pr_flow(self, thread_id: str, approved_by: User) -> None:
         # Status is already PR_OPEN — approve CAS'd it, which is what makes a
         # double approve impossible.
-        pr_url = await self.agent.open_pr(thread_id)
+        try:
+            pr_url = await self.agent.open_pr(thread_id)
+        except Exception as e:
+            # A real PR service (GitHub) can fail. Never strand the thread:
+            # revert to preview_ready so approve can simply be retried.
+            log.exception("open_pr failed for thread=%s", thread_id)
+            self._system(thread_id, f"🤖 Could not open the PR ({e}). "
+                                    "Reverted to preview-ready — approve again to retry.")
+            self.threads.transition(thread_id, ThreadStatus.PR_OPEN,
+                                    ThreadStatus.PREVIEW_READY)
+            self.publish_state(thread_id)
+            return
         self.threads.set_pr_url(thread_id, pr_url)
         thread = self.threads.get(thread_id)
         # The PR diff is original base -> approved preview; the intermediate
@@ -173,11 +184,20 @@ class AgentRunner:
     async def _ci_merge_rollout(self, thread_id: str, pr_url: str) -> None:
         # Status trails the side effect, never leads it: MERGED is only
         # published after merge_pr() actually returned.
-        await self.agent.await_ci_and_review(pr_url)
-        self._system(thread_id, "🤖 CI green, review approved — merging.")
-        self.publish_state(thread_id)
-
-        await self.agent.merge_pr(pr_url)
+        try:
+            await self.agent.await_ci_and_review(pr_url)
+            self._system(thread_id, "🤖 CI green, review approved — merging.")
+            self.publish_state(thread_id)
+            await self.agent.merge_pr(pr_url)
+        except Exception as e:
+            # PR exists but CI/merge failed: leave the thread at pr_open with
+            # the real link — a human can finish on GitHub, and a restart
+            # resume will retry from here.
+            log.exception("ci/merge failed for thread=%s", thread_id)
+            self._system(thread_id, f"🤖 Merge did not complete ({e}). "
+                                    f"The PR stays open: {pr_url}")
+            self.publish_state(thread_id)
+            return
         self._system(thread_id, "🤖 PR merged.")
         self.publish_state(thread_id, ThreadStatus.MERGED)
 

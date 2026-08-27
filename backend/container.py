@@ -10,6 +10,7 @@ isolated graphs (backend/tests/conftest.make_stack) instead of sharing it.
 from dataclasses import dataclass
 
 from backend.agent.agent import Agent
+from backend.agent.github import GitHubPRService
 from backend.agent.integrations import FakeGitClient, FakePRService, FakePreviewDeployer
 from backend.agent.launchers import make_launcher
 from backend.agent.launchers.base import TaskLauncher
@@ -56,10 +57,18 @@ def create_container(cfg: Settings) -> AppContainer:
 
     broker = StatusBroker()
     launcher = make_launcher(cfg.agent_launcher)
+    # Real PRs when a token+repo are configured (or forced); fake otherwise.
+    use_github = (cfg.pr_service == "github"
+                  or (cfg.pr_service == "auto" and cfg.github_token and cfg.github_repo))
+    prs = (GitHubPRService(repo=cfg.github_repo, token=cfg.github_token,
+                           threads=threads, patches=patches,
+                           auto_merge=cfg.github_auto_merge,
+                           app_base_url=cfg.app_base_url)
+           if use_github else FakePRService())
     agent = Agent(launcher=launcher,
                   git=FakeGitClient(),
                   deployer=FakePreviewDeployer(patches),
-                  prs=FakePRService())
+                  prs=prs)
     queue = AgentTaskQueue(
         tasks,
         max_inflight=cfg.agent_max_inflight,

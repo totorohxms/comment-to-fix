@@ -165,8 +165,8 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
           )
         )}
         {thread.prUrl && (
-          <a className="ctf-btn" href={thread.prUrl} onClick={(e) => e.preventDefault()}
-             title="fake PR url (demo)">🔀 {thread.prUrl.split("/").slice(-2).join("/")}</a>
+          <a className="ctf-btn" href={thread.prUrl} target="_blank" rel="noreferrer"
+             title="open the pull request">🔀 {thread.prUrl.split("/").slice(-2).join("/")}</a>
         )}
       </div>
       {canAct && !closed ? (
