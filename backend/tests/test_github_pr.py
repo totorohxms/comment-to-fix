@@ -136,3 +136,19 @@ def test_runner_reverts_to_preview_ready_when_open_pr_fails():
                    for c in stack.threads.get(thread.id).comments if c.system)
         await stack.queue.stop()
     run(main())
+
+def test_fake_pr_flow_is_labeled_simulated():
+    async def main():
+        stack = make_stack()   # FakePRService by default
+        await stack.queue.start()
+        thread, _ = post(stack, "hide this", selector="#a")
+        await wait_for(lambda: stack.threads.get(thread.id).status == ThreadStatus.PREVIEW_READY)
+        t = stack.threads.get(thread.id)
+        stack.runner.approve(t, evan(), t.preview_sha)
+        await wait_for(lambda: stack.threads.get(thread.id).status == ThreadStatus.DONE)
+        opened = next(c.text for c in stack.threads.get(thread.id).comments
+                      if c.system and "PR opened" in c.text)
+        assert "PR opened (simulated):" in opened
+        assert "github.com/acme/" in stack.threads.get(thread.id).pr_url
+        await stack.queue.stop()
+    run(main())

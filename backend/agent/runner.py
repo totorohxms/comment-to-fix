@@ -169,12 +169,15 @@ class AgentRunner:
             return
         self.threads.set_pr_url(thread_id, pr_url)
         thread = self.threads.get(thread_id)
+        # Honest labeling: the fake PR service's sentinel host marks the PR
+        # as simulated in the narration (see FakePRService).
+        simulated = " (simulated)" if "github.com/acme/" in pr_url else ""
         # The PR diff is original base -> approved preview; the intermediate
         # preview shas are history, not part of the diff.
         lineage = " → ".join([f"`{thread.base_sha}`", *(f"`{i.sha}`" for i in thread.iterations)])
         self._system(thread_id, (
             f"🤖 {approved_by.name} approved preview `{thread.preview_sha}`. "
-            f"PR opened: {pr_url}\n"
+            f"PR opened{simulated}: {pr_url}\n"
             f"Diff: `{thread.base_sha}...{thread.preview_sha}` "
             f"({len(thread.iterations)} iteration{'s' if len(thread.iterations) != 1 else ''}: {lineage})\n"
             "Running CI + requesting review."))

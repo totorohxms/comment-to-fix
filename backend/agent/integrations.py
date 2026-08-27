@@ -65,6 +65,9 @@ class FakePreviewDeployer:
         return new_sha, f"/preview/{new_sha}"
 
 class FakePRService:
+    # The acme/webapp host is the SENTINEL for a simulated PR: the runner tags
+    # the thread comment "(simulated)" and the UI renders a non-navigating
+    # chip when it sees it. Real PRs (GitHubPRService) never use this host.
     async def open_pr(self, branch: str, title: str) -> str:
         await asyncio.sleep(OPEN_PR_S)
         import random

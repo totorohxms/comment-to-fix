@@ -165,8 +165,18 @@ export function ThreadPanel({ thread, users, user, onClose, onFollowUp, onRefres
           )
         )}
         {thread.prUrl && (
-          <a className="ctf-btn" href={thread.prUrl} target="_blank" rel="noreferrer"
-             title="open the pull request">🔀 {thread.prUrl.split("/").slice(-2).join("/")}</a>
+          // acme/webapp is the fake PR service's sentinel host: render an
+          // honest non-navigating chip instead of a dead link. Real PRs
+          // (GitHub integration enabled) get a working link.
+          thread.prUrl.includes("github.com/acme/") ? (
+            <span className="ctf-btn ctf-pr-sim"
+                  title="Simulated PR — set GITHUB_TOKEN/GITHUB_REPO on the backend for real pull requests">
+              🔀 {thread.prUrl.split("/").slice(-2).join("/")} · simulated
+            </span>
+          ) : (
+            <a className="ctf-btn" href={thread.prUrl} target="_blank" rel="noreferrer"
+               title="open the pull request">🔀 {thread.prUrl.split("/").slice(-2).join("/")}</a>
+          )
         )}
       </div>
       {canAct && !closed ? (
