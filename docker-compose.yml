@@ -1,0 +1,20 @@
+services:
+  backend:
+    build: .
+    environment:
+      - CTF_DB=/data/ctf.db
+    volumes:
+      - ctf-data:/data
+    ports:
+      - "4173:4173"
+  frontend:
+    build: ./frontend
+    environment:
+      - BACKEND_URL=http://backend:4173
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  ctf-data:

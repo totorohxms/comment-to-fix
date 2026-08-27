@@ -1,0 +1,24 @@
+{
+  "name": "comment-to-fix-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "html2canvas": "^1.4.1",
+    "next": "^15.4.0",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "jsdom": "^29.1.1",
+    "typescript": "^5",
+    "vitest": "^4.1.11"
+  }
+}

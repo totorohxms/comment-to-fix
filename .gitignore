@@ -1,0 +1,16 @@
+# python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# local state
+data/
+.env
+.env.local
+
+# os
+.DS_Store
+
+# editor/agent local settings
+.claude/settings.local.json
