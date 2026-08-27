@@ -1,0 +1,40 @@
+# Render Blueprint — deploys the full stack: https://render.com/docs/blueprint-spec
+# Setup: Render dashboard → New → Blueprint → connect this repo → Apply.
+#
+# Two web services (mirrors docker-compose.yml):
+#   commenttofix-api  FastAPI backend, SQLite on a 1GB persistent disk
+#   commenttofix      Next.js frontend, proxies /api/* to the backend
+#
+# Note: if Render appends a suffix to the backend's *.onrender.com hostname
+# (name already taken), update BACKEND_URL below to match and re-apply.
+
+services:
+  - type: web
+    name: commenttofix-api
+    runtime: docker
+    plan: starter            # always-on; free tier spins down and kills SSE/queue
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /readyz
+    disk:
+      name: ctf-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: CTF_DB
+        value: /data/ctf.db
+      # Browser traffic is same-origin through the frontend proxy, so CORS is
+      # only needed if you hit the API origin directly (e.g. curl demos).
+      - key: CORS_ORIGINS
+        value: https://commenttofix.onrender.com
+
+  - type: web
+    name: commenttofix
+    runtime: docker
+    plan: starter
+    rootDir: frontend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      # Needed at BUILD time too: `output: standalone` bakes the /api/* rewrite
+      # destination into the build (frontend/Dockerfile declares the ARG).
+      - key: BACKEND_URL
+        value: https://commenttofix-api.onrender.com
