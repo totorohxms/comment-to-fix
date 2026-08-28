@@ -6,6 +6,7 @@ until the PR merges.
 
 **Live demo:** https://commenttofix.onrender.com — nothing to install; it's a
 shared demo instance, so you may see threads left by other visitors.
+**Design rationale:** [docs/design-rationale.pdf](docs/design-rationale.pdf)
 
 ## Try it (2 minutes)
 
